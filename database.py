@@ -17,6 +17,15 @@ async def init_db():
             )
         """)
         await db.execute("""
+            CREATE TABLE IF NOT EXISTS offset_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                item_id INTEGER NOT NULL,
+                char_offset INTEGER NOT NULL,
+                total_chars INTEGER NOT NULL,
+                saved_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        await db.execute("""
             CREATE TABLE IF NOT EXISTS settings (
                 key TEXT PRIMARY KEY,
                 value TEXT NOT NULL
@@ -87,11 +96,58 @@ async def url_in_queue(url: str) -> dict | None:
 
 async def update_offset(item_id: int, new_offset: int, total_chars: int):
     async with aiosqlite.connect(DB_PATH) as db:
+        # Сохраняем текущий offset в историю перед обновлением
+        await db.execute(
+            "INSERT INTO offset_history (item_id, char_offset, total_chars) "
+            "SELECT id, char_offset, total_chars FROM queue WHERE id = ?",
+            (item_id,)
+        )
         await db.execute(
             "UPDATE queue SET char_offset = ?, total_chars = ? WHERE id = ?",
             (new_offset, total_chars, item_id)
         )
+        # Оставляем только последние 20 записей на материал
+        await db.execute(
+            "DELETE FROM offset_history WHERE item_id = ? AND id NOT IN "
+            "(SELECT id FROM offset_history WHERE item_id = ? ORDER BY id DESC LIMIT 20)",
+            (item_id, item_id)
+        )
         await db.commit()
+
+
+async def get_offset_history(item_id: int) -> list[dict]:
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM offset_history WHERE item_id = ? ORDER BY id DESC LIMIT 20",
+            (item_id,)
+        ) as cursor:
+            rows = await cursor.fetchall()
+            return [dict(r) for r in rows]
+
+
+async def rollback_offset(item_id: int, history_id: int) -> bool:
+    """Откатывает offset к указанной записи в истории. Возвращает True если успешно."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT char_offset, total_chars FROM offset_history WHERE id = ? AND item_id = ?",
+            (history_id, item_id)
+        ) as cursor:
+            row = await cursor.fetchone()
+        if not row:
+            return False
+        await db.execute(
+            "UPDATE queue SET char_offset = ?, total_chars = ? WHERE id = ?",
+            (row["char_offset"], row["total_chars"], item_id)
+        )
+        # Удаляем записи истории новее этой
+        await db.execute(
+            "DELETE FROM offset_history WHERE item_id = ? AND id >= ?",
+            (item_id, history_id)
+        )
+        await db.commit()
+        return True
 
 
 async def remove_item(item_id: int):

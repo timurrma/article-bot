@@ -273,6 +273,60 @@ async def cmd_restart_doc(message: Message):
     await message.answer(f"🔄 Прогресс по «{title}» сброшен на начало.")
 
 
+# ─── /rollback ────────────────────────────────────────────────────────────────
+
+@router.message(Command("rollback"), IsOwner())
+async def cmd_rollback(message: Message):
+    item = await db.get_current_item()
+    if not item:
+        await message.answer("📭 Очередь пуста.")
+        return
+
+    history = await db.get_offset_history(item["id"])
+    if not history:
+        await message.answer("🕐 История пуста — ещё ни одного чанка не было доставлено.")
+        return
+
+    title = item["title"] or item["url"]
+    current_pct = int(item["char_offset"] / item["total_chars"] * 100) if item["total_chars"] else 0
+
+    lines = [f"📖 *{title}*\nТекущий прогресс: {current_pct}%\n\nВыбери точку отката:"]
+    buttons = []
+    for h in history:
+        pct = int(h["char_offset"] / h["total_chars"] * 100) if h["total_chars"] else 0
+        saved_at = h["saved_at"][:16]
+        label = f"↩️ {pct}% ({saved_at})"
+        buttons.append([InlineKeyboardButton(
+            text=label,
+            callback_data=f"rollback:{item['id']}:{h['id']}"
+        )])
+
+    buttons.append([InlineKeyboardButton(text="Отмена", callback_data="rollback:cancel")])
+    await message.answer(
+        "\n".join(lines),
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons),
+        parse_mode="Markdown"
+    )
+
+
+@router.callback_query(F.data.startswith("rollback:"))
+async def callback_rollback(callback: CallbackQuery):
+    if callback.from_user.id != ALLOWED_USER_ID:
+        return
+    data = callback.data[len("rollback:"):]
+    if data == "cancel":
+        await callback.message.edit_text("Отменено.")
+        return
+
+    parts = data.split(":")
+    item_id, history_id = int(parts[0]), int(parts[1])
+    ok = await db.rollback_offset(item_id, history_id)
+    if ok:
+        await callback.message.edit_text("✅ Откат выполнен. Следующий /now пришлёт этот чанк заново.")
+    else:
+        await callback.message.edit_text("❌ Не удалось откатиться — запись не найдена.")
+
+
 # ─── /finish_doc ──────────────────────────────────────────────────────────────
 
 @router.message(Command("finish_doc"), IsOwner())
