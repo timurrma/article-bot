@@ -265,71 +265,33 @@ async def cmd_settings(message: Message):
 
 @router.message(Command("prompt"), IsOwner())
 async def cmd_prompt(message: Message):
-    from ai import DEFAULT_SUMMARY_SYSTEM, DEFAULT_SUMMARY_USER
+    from ai import DEFAULT_FORMAT_PROMPT
     parts = message.text.split(maxsplit=1)
 
     if len(parts) == 1:
-        # Показать текущие промты
-        system = await db.get_setting("prompt_system") or "(дефолтный)"
-        user = await db.get_setting("prompt_user") or "(дефолтный)"
+        current = await db.get_setting("prompt_user") or DEFAULT_FORMAT_PROMPT
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="✏️ Изменить system", callback_data="prompt_edit:system")],
-            [InlineKeyboardButton(text="✏️ Изменить user", callback_data="prompt_edit:user")],
-            [InlineKeyboardButton(text="🔄 Сбросить оба на дефолт", callback_data="prompt_edit:reset")],
+            [InlineKeyboardButton(text="🔄 Сбросить на дефолт", callback_data="prompt_edit:reset")],
         ])
         await message.answer(
-            f"🤖 *System prompt:*\n`{system[:300]}`\n\n"
-            f"📝 *User prompt:*\n`{user[:300]}`",
+            f"📝 *Текущий формат ответа:*\n\n`{current[:800]}`",
             reply_markup=keyboard,
             parse_mode="Markdown"
         )
         return
 
-    # /prompt system <текст> или /prompt user <текст>
-    sub = parts[1].split(maxsplit=1)
-    if len(sub) < 2 or sub[0] not in ("system", "user"):
-        await message.answer(
-            "Использование:\n"
-            "/prompt — показать текущие\n"
-            "/prompt system <текст> — задать system prompt\n"
-            "/prompt user <текст> — задать user prompt\n\n"
-            "В user prompt доступны переменные: {title} {chunk_num} {total_chunks} {chunk_text}"
-        )
-        return
-
-    key = "prompt_system" if sub[0] == "system" else "prompt_user"
-    await db.set_setting(key, sub[1])
-    await message.answer(f"✅ {sub[0]} prompt обновлён.")
+    # /prompt <новый текст>
+    await db.set_setting("prompt_user", parts[1])
+    await message.answer("✅ Формат ответа обновлён.")
 
 
 @router.callback_query(F.data.startswith("prompt_edit:"))
 async def callback_prompt_edit(callback: CallbackQuery):
     if callback.from_user.id != ALLOWED_USER_ID:
         return
-    from ai import DEFAULT_SUMMARY_SYSTEM, DEFAULT_SUMMARY_USER
-    action = callback.data[len("prompt_edit:"):]
-
-    if action == "reset":
-        await db.set_setting("prompt_system", "")
+    if callback.data == "prompt_edit:reset":
         await db.set_setting("prompt_user", "")
-        await callback.message.edit_text("🔄 Оба промта сброшены на дефолтные.")
-        return
-
-    if action == "system":
-        current = await db.get_setting("prompt_system") or DEFAULT_SUMMARY_SYSTEM
-        await callback.message.edit_text(
-            f"Текущий system prompt:\n\n`{current}`\n\n"
-            "Отправь новый текст командой:\n`/prompt system <твой текст>`",
-            parse_mode="Markdown"
-        )
-    elif action == "user":
-        current = await db.get_setting("prompt_user") or DEFAULT_SUMMARY_USER
-        await callback.message.edit_text(
-            f"Текущий user prompt:\n\n`{current}`\n\n"
-            "Переменные: `{title}` `{chunk_num}` `{total_chunks}` `{chunk_text}`\n\n"
-            "Отправь новый текст командой:\n`/prompt user <твой текст>`",
-            parse_mode="Markdown"
-        )
+        await callback.message.edit_text("🔄 Формат сброшен на дефолтный.")
 
 
 # ─── /restart_doc ─────────────────────────────────────────────────────────────

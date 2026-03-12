@@ -39,9 +39,6 @@ async def init_db():
             INSERT OR IGNORE INTO settings (key, value) VALUES ('paused', '0')
         """)
         await db.execute("""
-            INSERT OR IGNORE INTO settings (key, value) VALUES ('prompt_system', '')
-        """)
-        await db.execute("""
             INSERT OR IGNORE INTO settings (key, value) VALUES ('prompt_user', '')
         """)
         await db.commit()
