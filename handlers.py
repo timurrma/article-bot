@@ -5,7 +5,7 @@ import re
 import logging
 
 from aiogram import Router, F
-from aiogram.filters import Command
+from aiogram.filters import Command, Filter
 from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 
 import database as db
@@ -19,21 +19,14 @@ logger = logging.getLogger(__name__)
 router = Router()
 
 
-def only_owner(func):
-    """Декоратор — только для владельца бота."""
-    async def wrapper(message: Message, **kwargs):
-        if message.from_user.id != ALLOWED_USER_ID:
-            await message.answer("⛔ Нет доступа.")
-            return
-        return await func(message, **kwargs)
-    wrapper.__name__ = func.__name__
-    return wrapper
+class IsOwner(Filter):
+    async def __call__(self, message: Message) -> bool:
+        return message.from_user.id == ALLOWED_USER_ID
 
 
 # ─── /start ───────────────────────────────────────────────────────────────────
 
-@router.message(Command("start"))
-@only_owner
+@router.message(Command("start"), IsOwner())
 async def cmd_start(message: Message):
     await message.answer(
         "👋 Привет! Я буду присылать тебе ежедневные выжимки из статей и книг.\n\n"
@@ -52,8 +45,7 @@ async def cmd_start(message: Message):
 
 # ─── /add ─────────────────────────────────────────────────────────────────────
 
-@router.message(Command("add"))
-@only_owner
+@router.message(Command("add"), IsOwner())
 async def cmd_add(message: Message):
     parts = message.text.split(maxsplit=1)
     if len(parts) < 2 or not parts[1].startswith("http"):
@@ -62,7 +54,6 @@ async def cmd_add(message: Message):
 
     url = parts[1].strip()
 
-    # Проверка дубля
     existing = await db.url_in_queue(url)
     if existing:
         queue = await db.get_queue()
@@ -117,8 +108,7 @@ async def _do_add(message: Message, url: str):
 
 # ─── /queue ───────────────────────────────────────────────────────────────────
 
-@router.message(Command("queue"))
-@only_owner
+@router.message(Command("queue"), IsOwner())
 async def cmd_queue(message: Message):
     queue = await db.get_queue()
     if not queue:
@@ -141,8 +131,7 @@ async def cmd_queue(message: Message):
 
 # ─── /now ─────────────────────────────────────────────────────────────────────
 
-@router.message(Command("now"))
-@only_owner
+@router.message(Command("now"), IsOwner())
 async def cmd_now(message: Message):
     await message.answer("⏳ Генерирую выжимку...")
     await deliver_digest(message.bot, message.chat.id)
@@ -150,8 +139,7 @@ async def cmd_now(message: Message):
 
 # ─── /skip ────────────────────────────────────────────────────────────────────
 
-@router.message(Command("skip"))
-@only_owner
+@router.message(Command("skip"), IsOwner())
 async def cmd_skip(message: Message):
     item = await db.get_current_item()
     if not item:
@@ -172,15 +160,13 @@ async def cmd_skip(message: Message):
 
 # ─── /pause / /resume ─────────────────────────────────────────────────────────
 
-@router.message(Command("pause"))
-@only_owner
+@router.message(Command("pause"), IsOwner())
 async def cmd_pause(message: Message):
     await db.set_setting("paused", "1")
     await message.answer("⏸ Пауза. Выжимки не будут приходить до /resume")
 
 
-@router.message(Command("resume"))
-@only_owner
+@router.message(Command("resume"), IsOwner())
 async def cmd_resume(message: Message):
     await db.set_setting("paused", "0")
     delivery_time = await db.get_setting("delivery_time")
@@ -189,11 +175,9 @@ async def cmd_resume(message: Message):
 
 # ─── /settings ────────────────────────────────────────────────────────────────
 
-@router.message(Command("settings"))
-@only_owner
+@router.message(Command("settings"), IsOwner())
 async def cmd_settings(message: Message):
     parts = message.text.split()
-    # /settings time HH:MM
     if len(parts) == 3 and parts[1] == "time":
         new_time = parts[2]
         if not re.match(r"^\d{2}:\d{2}$", new_time):
@@ -217,8 +201,7 @@ async def cmd_settings(message: Message):
 
 # ─── /restart_doc ─────────────────────────────────────────────────────────────
 
-@router.message(Command("restart_doc"))
-@only_owner
+@router.message(Command("restart_doc"), IsOwner())
 async def cmd_restart_doc(message: Message):
     parts = message.text.split()
     if len(parts) > 1 and parts[1] == "all":
@@ -238,8 +221,7 @@ async def cmd_restart_doc(message: Message):
 
 # ─── /finish_doc ──────────────────────────────────────────────────────────────
 
-@router.message(Command("finish_doc"))
-@only_owner
+@router.message(Command("finish_doc"), IsOwner())
 async def cmd_finish_doc(message: Message):
     item = await db.get_current_item()
     if not item:
@@ -263,8 +245,7 @@ async def cmd_finish_doc(message: Message):
 
 # ─── /remove ──────────────────────────────────────────────────────────────────
 
-@router.message(Command("remove"))
-@only_owner
+@router.message(Command("remove"), IsOwner())
 async def cmd_remove(message: Message):
     queue = await db.get_queue()
     if not queue:
@@ -305,8 +286,7 @@ async def callback_remove(callback: CallbackQuery):
 
 # ─── Q&A — любое сообщение ────────────────────────────────────────────────────
 
-@router.message(F.text)
-@only_owner
+@router.message(F.text, IsOwner())
 async def handle_question(message: Message):
     item = await db.get_current_item()
     topic = item["title"] if item else ""
