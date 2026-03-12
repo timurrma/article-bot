@@ -63,7 +63,6 @@ async def generate_summary(
             {"role": "system", "content": SUMMARY_SYSTEM_PROMPT},
             {"role": "user", "content": user_prompt},
         ],
-        temperature=0.7,
     )
 
     return response.choices[0].message.content.strip()
@@ -84,7 +83,6 @@ async def answer_question(question: str, current_topic: str = "") -> str:
             {"role": "system", "content": system},
             {"role": "user", "content": question},
         ],
-        temperature=0.7,
     )
 
     return response.choices[0].message.content.strip()
