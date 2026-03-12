@@ -21,11 +21,11 @@ router = Router()
 
 def only_owner(func):
     """Декоратор — только для владельца бота."""
-    async def wrapper(message: Message, *args, **kwargs):
+    async def wrapper(message: Message, **kwargs):
         if message.from_user.id != ALLOWED_USER_ID:
             await message.answer("⛔ Нет доступа.")
             return
-        return await func(message, *args, **kwargs)
+        return await func(message, **kwargs)
     wrapper.__name__ = func.__name__
     return wrapper
 
