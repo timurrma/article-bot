@@ -292,8 +292,8 @@ async def handle_document(message: Message):
     name = doc.file_name or ""
     lower = name.lower()
 
-    if not any(lower.endswith(ext) for ext in (".epub", ".fb2")):
-        await message.answer("❌ Поддерживаются epub и fb2. Для ссылок используй /add <ссылка>")
+    if not any(lower.endswith(ext) for ext in (".epub", ".fb2", ".zip")):
+        await message.answer("❌ Поддерживаются epub, fb2, zip. Для ссылок используй /add <ссылка>")
         return
 
     await message.answer(f"⏳ Скачиваю «{name}»...")
@@ -306,6 +306,26 @@ async def handle_document(message: Message):
 
     file = await message.bot.get_file(doc.file_id)
     await message.bot.download_file(file.file_path, destination=file_path)
+
+    # Если zip — распаковываем и ищем epub/fb2
+    if lower.endswith(".zip"):
+        import zipfile
+        extract_dir = file_path.replace(".zip", "_extracted")
+        with zipfile.ZipFile(file_path, "r") as zf:
+            zf.extractall(extract_dir)
+        # Ищем первый epub или fb2
+        found = None
+        for root, _, files in os.walk(extract_dir):
+            for f in files:
+                if f.lower().endswith((".epub", ".fb2")):
+                    found = os.path.join(root, f)
+                    break
+            if found:
+                break
+        if not found:
+            await message.answer("❌ В zip не найден epub или fb2 файл.")
+            return
+        file_path = found
 
     from readers import read_local_file, ReaderError
     try:
