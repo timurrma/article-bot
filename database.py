@@ -66,7 +66,9 @@ async def add_to_queue(url: str, title: str) -> int:
             "INSERT INTO queue (url, title, position) VALUES (?, ?, ?)",
             (url, title, next_pos)
         ) as cursor:
-            return cursor.lastrowid
+            new_id = cursor.lastrowid
+        await db.commit()
+        return new_id
 
 
 async def get_queue() -> list[dict]:
