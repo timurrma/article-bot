@@ -52,6 +52,7 @@ async def generate_summary(
             {"role": "system", "content": SUMMARY_SYSTEM_PROMPT},
             {"role": "user", "content": user_prompt},
         ],
+        timeout=90.0,
     )
 
     return response.choices[0].message.content.strip()
@@ -72,6 +73,7 @@ async def answer_question(question: str, current_topic: str = "") -> str:
             {"role": "system", "content": system},
             {"role": "user", "content": question},
         ],
+        timeout=60.0,
     )
 
     return response.choices[0].message.content.strip()

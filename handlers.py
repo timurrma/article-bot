@@ -24,6 +24,26 @@ class IsOwner(Filter):
         return message.from_user.id == ALLOWED_USER_ID
 
 
+# ─── /dbcheck ─────────────────────────────────────────────────────────────────
+
+@router.message(Command("dbcheck"), IsOwner())
+async def cmd_dbcheck(message: Message):
+    import aiosqlite
+    from config import DB_PATH
+    async with aiosqlite.connect(DB_PATH) as conn:
+        conn.row_factory = aiosqlite.Row
+        async with conn.execute("SELECT id, title, url, char_offset, total_chars, is_active, position FROM queue ORDER BY position") as cur:
+            rows = await cur.fetchall()
+    if not rows:
+        await message.answer("База пуста (нет строк в queue)")
+        return
+    lines = []
+    for r in rows:
+        pct = f"{int(r['char_offset']/r['total_chars']*100)}%" if r['total_chars'] else "0%"
+        lines.append(f"id={r['id']} active={r['is_active']} pos={r['position']} {pct} | {(r['title'] or r['url'])[:40]}")
+    await message.answer("\n".join(lines))
+
+
 # ─── /start ───────────────────────────────────────────────────────────────────
 
 @router.message(Command("start"), IsOwner())
