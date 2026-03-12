@@ -73,7 +73,7 @@ async def deliver_digest(bot, chat_id: int):
     await db.update_offset(item["id"], new_offset, total_chars)
 
     # Формируем и отправляем сообщение
-    header = f"📖 *{_escape(title)}* — часть {chunk_num}/{total_chunks}\n\n"
+    header = f"📖 <b>{_escape_html(title)}</b> — часть {chunk_num}/{total_chunks}\n\n"
     separator = "─────────────────────\n"
     full_message = header + separator + summary
 
@@ -93,14 +93,14 @@ async def _finish_document(bot, chat_id: int, item: dict, title: str):
         next_item = queue[0]
         await bot.send_message(
             chat_id,
-            f"✅ «{title}» прочитан полностью!\n"
-            f"Следующий в очереди: *{_escape(next_item['title'] or next_item['url'])}*",
-            parse_mode="Markdown"
+            f"✅ «{_escape_html(title)}» прочитан полностью!\n"
+            f"Следующий в очереди: <b>{_escape_html(next_item['title'] or next_item['url'])}</b>",
+            parse_mode="HTML"
         )
     else:
         await bot.send_message(
             chat_id,
-            f"✅ «{title}» прочитан полностью!\n\n"
+            f"✅ «{_escape_html(title)}» прочитан полностью!\n\n"
             f"📭 Очередь пуста. Добавь новый материал через /add"
         )
 
@@ -108,7 +108,7 @@ async def _finish_document(bot, chat_id: int, item: dict, title: str):
 async def _send_long_message(bot, chat_id: int, text: str):
     max_len = 4000
     if len(text) <= max_len:
-        await bot.send_message(chat_id, text, parse_mode="Markdown")
+        await bot.send_message(chat_id, text, parse_mode="HTML")
         return
 
     # Разбиваем по абзацам
@@ -124,11 +124,9 @@ async def _send_long_message(bot, chat_id: int, text: str):
         parts.append(current)
 
     for part in parts:
-        await bot.send_message(chat_id, part, parse_mode="Markdown")
+        await bot.send_message(chat_id, part, parse_mode="HTML")
 
 
-def _escape(text: str) -> str:
-    """Экранирует спецсимволы Markdown."""
-    for ch in ["_", "*", "[", "]", "(", ")", "~", "`", ">", "#", "+", "-", "=", "|", "{", "}", ".", "!"]:
-        text = text.replace(ch, f"\\{ch}")
-    return text
+def _escape_html(text: str) -> str:
+    """Экранирует спецсимволы HTML."""
+    return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
