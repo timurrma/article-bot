@@ -112,3 +112,16 @@ async def restart_all():
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute("UPDATE queue SET char_offset = 0 WHERE is_active = 1")
         await db.commit()
+
+
+async def move_to_front(item_id: int):
+    """Переставляет материал на первое место в очереди."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute("SELECT MIN(position) FROM queue WHERE is_active = 1") as cursor:
+            row = await cursor.fetchone()
+            min_pos = (row[0] or 1) - 1
+        await db.execute(
+            "UPDATE queue SET position = ? WHERE id = ?",
+            (min_pos, item_id)
+        )
+        await db.commit()

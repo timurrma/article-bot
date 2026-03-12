@@ -70,6 +70,11 @@ async def cmd_add(message: Message):
         )
         return
 
+    queue = await db.get_queue()
+    if len(queue) >= 15:
+        await message.answer("❌ Очередь заполнена (максимум 15 материалов). Удали что-нибудь через /remove")
+        return
+
     await _do_add(message, url)
 
 
@@ -126,7 +131,36 @@ async def cmd_queue(message: Message):
         marker = "▶️" if i == 0 else f"{i + 1}."
         lines.append(f"{marker} *{title}* — {progress}")
 
+    if len(queue) > 1:
+        lines.append("\nЧтобы читать следующим: /next <номер>")
+
     await message.answer("\n".join(lines), parse_mode="Markdown")
+
+
+# ─── /next ────────────────────────────────────────────────────────────────────
+
+@router.message(Command("next"), IsOwner())
+async def cmd_next(message: Message):
+    parts = message.text.split()
+    if len(parts) < 2 or not parts[1].isdigit():
+        await message.answer("❌ Укажи номер: /next 3")
+        return
+
+    num = int(parts[1])
+    queue = await db.get_queue()
+
+    if num < 1 or num > len(queue):
+        await message.answer(f"❌ Номер должен быть от 1 до {len(queue)}")
+        return
+
+    if num == 1:
+        await message.answer("Этот материал уже первый в очереди.")
+        return
+
+    item = queue[num - 1]
+    await db.move_to_front(item["id"])
+    title = item["title"] or item["url"]
+    await message.answer(f"✅ «{title}» поставлен следующим.")
 
 
 # ─── /now ─────────────────────────────────────────────────────────────────────
@@ -294,6 +328,11 @@ async def handle_document(message: Message):
 
     if not any(lower.endswith(ext) for ext in (".epub", ".fb2", ".zip")):
         await message.answer("❌ Поддерживаются epub, fb2, zip. Для ссылок используй /add <ссылка>")
+        return
+
+    queue_check = await db.get_queue()
+    if len(queue_check) >= 15:
+        await message.answer("❌ Очередь заполнена (максимум 15 материалов). Удали что-нибудь через /remove")
         return
 
     await message.answer(f"⏳ Скачиваю «{name}»...")
