@@ -188,9 +188,84 @@ async def read_web_page(url: str) -> tuple[str, str]:
     return title, "\n\n".join(paragraphs)
 
 
+def read_epub_file(path: str) -> tuple[str, str]:
+    """Читает epub файл с диска."""
+    try:
+        import ebooklib
+        from ebooklib import epub
+        from bs4 import BeautifulSoup as BS
+
+        book = epub.read_epub(path)
+        title = book.get_metadata("DC", "title")
+        title = title[0][0] if title else path.split("/")[-1].replace(".epub", "")
+
+        chapters = []
+        for item in book.get_items_of_type(ebooklib.ITEM_DOCUMENT):
+            soup = BS(item.get_content(), "html.parser")
+            text = soup.get_text(separator="\n", strip=True)
+            if len(text) > 100:
+                chapters.append(text)
+
+        if not chapters:
+            raise ReaderError("Epub не содержит читаемого текста")
+
+        return title, "\n\n".join(chapters)
+    except ReaderError:
+        raise
+    except Exception as e:
+        raise ReaderError(f"Ошибка чтения epub: {e}")
+
+
+def read_fb2_file(path: str) -> tuple[str, str]:
+    """Читает fb2 файл с диска."""
+    try:
+        from bs4 import BeautifulSoup as BS
+
+        with open(path, "rb") as f:
+            content = f.read()
+
+        soup = BS(content, "xml")
+        title_tag = soup.find("book-title")
+        title = title_tag.get_text(strip=True) if title_tag else path.split("/")[-1].replace(".fb2", "")
+
+        paragraphs = []
+        for p in soup.find_all("p"):
+            text = p.get_text(separator=" ", strip=True)
+            if len(text) > 40:
+                paragraphs.append(text)
+
+        if not paragraphs:
+            raise ReaderError("FB2 не содержит читаемого текста")
+
+        return title, "\n\n".join(paragraphs)
+    except ReaderError:
+        raise
+    except Exception as e:
+        raise ReaderError(f"Ошибка чтения fb2: {e}")
+
+
+def read_local_file(path: str) -> tuple[str, str]:
+    """Читает локальный файл по расширению."""
+    lower = path.lower()
+    if lower.endswith(".epub"):
+        return read_epub_file(path)
+    elif lower.endswith(".fb2"):
+        return read_fb2_file(path)
+    elif lower.endswith(".pdf"):
+        with open(path, "rb") as f:
+            content = f.read()
+        title = path.split("/")[-1].replace(".pdf", "")
+        return title, _extract_pdf_text(content)
+    else:
+        raise ReaderError(f"Неподдерживаемый формат файла")
+
+
 async def read_source(url: str) -> tuple[str, str]:
     """Определяет тип источника и возвращает (title, text)."""
-    if _is_google_docs(url):
+    # Локальный файл (сохранённый от пользователя)
+    if url.startswith("/"):
+        return read_local_file(url)
+    elif _is_google_docs(url):
         return await read_google_docs(url)
     elif _is_google_drive(url):
         return await read_google_drive_pdf(url)

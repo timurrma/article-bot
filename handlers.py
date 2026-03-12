@@ -284,6 +284,49 @@ async def callback_remove(callback: CallbackQuery):
     await callback.message.edit_text(f"✅ «{title}» удалён из очереди.")
 
 
+# ─── Получение файла (epub, fb2, pdf) ────────────────────────────────────────
+
+@router.message(F.document, IsOwner())
+async def handle_document(message: Message):
+    doc = message.document
+    name = doc.file_name or ""
+    lower = name.lower()
+
+    if not any(lower.endswith(ext) for ext in (".epub", ".fb2")):
+        await message.answer("❌ Поддерживаются epub и fb2. Для ссылок используй /add <ссылка>")
+        return
+
+    await message.answer(f"⏳ Скачиваю «{name}»...")
+
+    import os
+    from config import DB_PATH
+    books_dir = os.path.join(os.path.dirname(DB_PATH), "books")
+    os.makedirs(books_dir, exist_ok=True)
+    file_path = os.path.join(books_dir, name)
+
+    file = await message.bot.get_file(doc.file_id)
+    await message.bot.download_file(file.file_path, destination=file_path)
+
+    from readers import read_local_file, ReaderError
+    try:
+        title, text = read_local_file(file_path)
+        if not text.strip():
+            await message.answer("❌ Файл не содержит текста.")
+            return
+    except ReaderError as e:
+        await message.answer(f"❌ Не могу прочитать файл: {e}")
+        return
+
+    await db.add_to_queue(file_path, title)
+    queue = await db.get_queue()
+    pos = len(queue)
+    await message.answer(
+        f"✅ Добавлено на позицию {pos}:\n*{title}*\n\n"
+        f"Слов в материале: ~{len(text.split()):,}",
+        parse_mode="Markdown"
+    )
+
+
 # ─── Q&A — любое сообщение ────────────────────────────────────────────────────
 
 @router.message(F.text, IsOwner())

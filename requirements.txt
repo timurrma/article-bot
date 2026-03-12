@@ -9,3 +9,4 @@ python-dotenv>=1.0.0
 pymupdf>=1.24.0
 google-api-python-client>=2.130.0
 google-auth>=2.29.0
+ebooklib>=0.18
