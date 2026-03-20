@@ -40,7 +40,7 @@ async def cmd_dbcheck(message: Message):
     lines = []
     for r in rows:
         pct = f"{int(r['char_offset']/r['total_chars']*100)}%" if r['total_chars'] else "0%"
-        lines.append(f"id={r['id']} active={r['is_active']} pos={r['position']} {pct} | {(r['title'] or r['url'])[:40]}")
+        lines.append(f"id={r['id']} active={r['is_active']} pos={r['position']} {pct} | {(r['title'] or r['url'])[:40]}\n  url: {r['url']}")
     await message.answer("\n".join(lines))
 
 
