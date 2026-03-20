@@ -4,7 +4,7 @@
 import logging
 
 import database as db
-from readers import read_source, ReaderError
+from readers import read_source, ReaderError, extract_fb2_images_for_range
 from chunker import get_chunk, count_chunks, current_chunk_number
 from ai import generate_summary
 from config import ALLOWED_USER_ID
@@ -56,6 +56,10 @@ async def deliver_digest(bot, chat_id: int):
     # Считаем номера
     total_chunks = count_chunks(full_text)
     chunk_num = current_chunk_number(full_text, item["char_offset"])
+
+    # Отправляем картинки из FB2 если есть (до дайджеста — как иллюстрации к тексту)
+    if item["url"].startswith("/") and item["url"].lower().endswith(".fb2"):
+        await _send_chunk_images(bot, chat_id, item["url"], item["char_offset"], new_offset)
 
     # Генерируем выжимку
     try:
@@ -130,3 +134,38 @@ async def _send_long_message(bot, chat_id: int, text: str):
 def _escape_html(text: str) -> str:
     """Экранирует спецсимволы HTML."""
     return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
+async def _send_chunk_images(bot, chat_id: int, path: str, start_offset: int, end_offset: int):
+    """Извлекает и отправляет картинки из FB2-чанка. Максимум 10 штук."""
+    from aiogram.types import BufferedInputFile
+    from aiogram.exceptions import TelegramBadRequest
+
+    MAX_IMAGES = 10
+
+    try:
+        images = extract_fb2_images_for_range(path, start_offset, end_offset)
+    except Exception as e:
+        logger.warning(f"Не удалось извлечь картинки из FB2: {e}")
+        return
+
+    if not images:
+        return
+
+    truncated = len(images) > MAX_IMAGES
+    images = images[:MAX_IMAGES]
+
+    if truncated:
+        await bot.send_message(
+            chat_id,
+            f"🖼 В этом разделе больше {MAX_IMAGES} изображений, показываю первые {MAX_IMAGES}."
+        )
+
+    for i, img_bytes in enumerate(images):
+        try:
+            await bot.send_photo(
+                chat_id,
+                photo=BufferedInputFile(img_bytes, filename=f"image_{i+1}.png"),
+            )
+        except TelegramBadRequest as e:
+            logger.warning(f"Не удалось отправить картинку {i+1}: {e}")

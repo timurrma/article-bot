@@ -145,6 +145,8 @@ def _extract_pdf_text(content: bytes) -> str:
         raise ReaderError(f"Ошибка парсинга PDF: {e}")
 
 
+
+
 async def read_web_page(url: str) -> tuple[str, str]:
     headers = {
         "User-Agent": (
@@ -217,7 +219,10 @@ def read_epub_file(path: str) -> tuple[str, str]:
 
 
 def read_fb2_file(path: str) -> tuple[str, str]:
-    """Читает fb2 файл с диска."""
+    """Читает fb2 файл с диска.
+    В текст вставляются маркеры __IMG:id__ там, где в оригинале стоят изображения.
+    Это позволяет extract_fb2_images_for_range найти нужные картинки по offset.
+    """
     try:
         from bs4 import BeautifulSoup as BS
 
@@ -228,20 +233,80 @@ def read_fb2_file(path: str) -> tuple[str, str]:
         title_tag = soup.find("book-title")
         title = title_tag.get_text(strip=True) if title_tag else path.split("/")[-1].replace(".fb2", "")
 
-        paragraphs = []
-        for p in soup.find_all("p"):
-            text = p.get_text(separator=" ", strip=True)
-            if len(text) > 40:
-                paragraphs.append(text)
+        body = soup.find("body")
+        if not body:
+            raise ReaderError("FB2 не содержит body")
 
-        if not paragraphs:
+        parts = []
+        for elem in body.descendants:
+            if not hasattr(elem, "name"):
+                continue
+            if elem.name == "image":
+                href = elem.get("l:href") or elem.get("href") or ""
+                img_id = href.lstrip("#")
+                if img_id:
+                    parts.append(f"__IMG:{img_id}__")
+            elif elem.name == "p":
+                text = elem.get_text(separator=" ", strip=True)
+                if len(text) > 40:
+                    parts.append(text)
+
+        if not parts:
             raise ReaderError("FB2 не содержит читаемого текста")
 
-        return title, "\n\n".join(paragraphs)
+        return title, "\n\n".join(parts)
     except ReaderError:
         raise
     except Exception as e:
         raise ReaderError(f"Ошибка чтения fb2: {e}")
+
+
+def extract_fb2_images_for_range(path: str, start_offset: int, end_offset: int) -> list[bytes]:
+    """
+    Возвращает байты картинок (JPEG/PNG), чьи маркеры __IMG:id__ попадают
+    в символьный диапазон [start_offset, end_offset] полного текста книги.
+    """
+    import base64
+    from bs4 import BeautifulSoup as BS
+
+    try:
+        with open(path, "rb") as f:
+            content = f.read()
+    except Exception:
+        return []
+
+    soup = BS(content, "xml")
+
+    # Собираем все бинарные ресурсы: id -> bytes
+    binary_map: dict[str, bytes] = {}
+    for binary in soup.find_all("binary"):
+        bid = binary.get("id", "")
+        if not bid:
+            continue
+        try:
+            binary_map[bid] = base64.b64decode(binary.get_text(strip=True))
+        except Exception:
+            continue
+
+    if not binary_map:
+        return []
+
+    # Читаем полный текст (с маркерами) чтобы найти offset маркеров
+    _, full_text = read_fb2_file(path)
+    chunk = full_text[start_offset:end_offset]
+
+    # Ищем все маркеры в диапазоне
+    found_ids = re.findall(r"__IMG:([^_]+)__", chunk)
+
+    result = []
+    seen = set()
+    for img_id in found_ids:
+        if img_id in seen or img_id not in binary_map:
+            continue
+        seen.add(img_id)
+        result.append(binary_map[img_id])
+
+    return result
 
 
 def read_local_file(path: str) -> tuple[str, str]:
